@@ -14,6 +14,7 @@ import android.os.CountDownTimer
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.net.toUri
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.TimeUnit
@@ -42,14 +43,10 @@ class TimerService : Service() {
         const val FINISHED_CHANNEL_ID = "TIMER_FINISHED_CHANNEL"
         const val PROGRESS_NOTIFICATION_ID = 1
         const val FINISHED_NOTIFICATION_ID = 2
-
-        // Acciones que vienen desde la MainActivity
         const val ACTION_START = "ACTION_START"
         const val ACTION_PAUSE = "ACTION_PAUSE"
         const val ACTION_RESET = "ACTION_RESET"
         const val EXTRA_DURATION = "EXTRA_DURATION"
-
-        // Acciones que vienen desde los botones de la notificación
         const val ACTION_TOGGLE_PAUSE_PLAY = "ACTION_TOGGLE_PAUSE_PLAY"
     }
 
@@ -89,30 +86,31 @@ class TimerService : Service() {
 
         countDownTimer = object : CountDownTimer(durationToUse, 1000) {
             override fun onTick(millisUntilFinished: Long) {
-                _timerState.value = TimerData(millisUntilFinished, initialDuration, true)
+                _timerState.value = TimerData(millisUntilFinished, durationToUse, true)
                 updateProgressNotification()
             }
             override fun onFinish() {
-                _timerState.value = TimerData(0, initialDuration, false)
+                releaseWakeLockAndStop(true)
                 showFinishedNotification()
+                _timerState.value = TimerData(0, durationToUse, false)
                 stopSelf()
             }
         }.start()
 
-        _timerState.value = TimerData(durationToUse, initialDuration, true)
+        _timerState.value = TimerData(durationToUse, durationToUse, true)
     }
 
     fun pauseTimer() {
         countDownTimer?.cancel()
         _timerState.value = _timerState.value.copy(isRunning = false)
-        releaseWakeLockAndStop(false) // false para no remover la notificación
-        updateProgressNotification() // Actualiza la notificación para mostrar el botón "Continuar"
+        releaseWakeLockAndStop(false)
+        updateProgressNotification()
     }
 
     fun resetTimer(newDuration: Long) {
         countDownTimer?.cancel()
         _timerState.value = TimerData(newDuration, newDuration, false)
-        releaseWakeLockAndStop(true) // true para remover la notificación
+        releaseWakeLockAndStop(true)
     }
 
     private fun releaseWakeLockAndStop(removeNotification: Boolean) {
@@ -144,7 +142,7 @@ class TimerService : Service() {
         val timeFormatted = String.format("%02d:%02d", minutes, seconds)
 
         val toggleIntent = Intent(this, TimerService::class.java).setAction(ACTION_TOGGLE_PAUSE_PLAY)
-        val togglePendingIntent = PendingIntent.getService(this, 1, toggleIntent, PendingIntent.FLAG_IMMUTABLE)
+        val togglePendingIntent = PendingIntent.getService(this, 1, toggleIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         val actionIcon = if (isRunning) R.drawable.ic_media_pause else R.drawable.ic_media_play
         val actionTitle = if (isRunning) "Pausar" else "Continuar"
@@ -163,12 +161,16 @@ class TimerService : Service() {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
+        val soundUri = "android.resource://$packageName/${R.raw.bubbles}".toUri()
+
         val finishedNotification = NotificationCompat.Builder(this, FINISHED_CHANNEL_ID)
             .setContentTitle("¡Tiempo Terminado!")
-            .setContentText("¡Buen trabajo! Es hora de un descanso.")
+            .setContentText("¡Buen trabajo, Guapisima! Es hora de un descanso :)")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSound(soundUri)
             .build()
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -186,17 +188,22 @@ class TimerService : Service() {
             )
             nm.createNotificationChannel(progressChannel)
 
+            val soundUri = "android.resource://$packageName/${R.raw.bubbles}".toUri()
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .build()
+
             val finishedChannel = NotificationChannel(
                 FINISHED_CHANNEL_ID,
                 "Temporizador Finalizado",
                 NotificationManager.IMPORTANCE_HIGH
-            )
-            val soundUri = Uri.parse("android.resource://$packageName/${R.raw.bubbles}")
-            val audioAttributes = AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .build()
-            finishedChannel.setSound(soundUri, audioAttributes)
+            ).apply {
+                description = "Notificación que suena al terminar un ciclo."
+                setSound(soundUri, audioAttributes)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500)
+            }
             nm.createNotificationChannel(finishedChannel)
         }
     }

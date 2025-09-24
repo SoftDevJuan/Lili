@@ -46,6 +46,7 @@ dependencies {
     implementation(libs.com.google.android.material)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.cardview)
+    implementation("androidx.preference:preference-ktx:1.2.1")
 
     // Dependencias para Glide
     implementation(libs.glide)
@@ -54,4 +55,6 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+
+
 }
