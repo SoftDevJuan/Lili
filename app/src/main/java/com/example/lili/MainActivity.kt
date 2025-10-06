@@ -68,6 +68,8 @@ class MainActivity : AppCompatActivity() {
         updateTimerUI(initialDuration, initialDuration)
         updateControlButtonsUI(false)
         updateModeUI()
+
+        scheduleDailyAlarms(this)
     }
 
     override fun onStart() {
